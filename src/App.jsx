@@ -46,7 +46,21 @@ function App() {
       return
     }
 
+    // Warning if too many searches
     const totalSearches = domainList.length * articleList.length
+    if (totalSearches > 10) {
+      const confirmed = window.confirm(
+        `Stai per fare ${totalSearches} ricerche. Ogni ricerca richiede 5-10 secondi con Puppeteer.\n\n` +
+        `Tempo stimato: ${Math.round(totalSearches * 7 / 60)} minuti.\n\n` +
+        `Consiglio: fai max 10 ricerche alla volta per evitare timeout.\n\n` +
+        `Vuoi continuare?`
+      )
+      if (!confirmed) {
+        setIsSearching(false)
+        return
+      }
+    }
+
     let completed = 0
     const searchResults = []
 
@@ -73,11 +87,16 @@ function App() {
               searchQuery: `site:${domain} "${article}"`,
               url: data.url || '',
               title: data.title || '',
+              description: data.description || '',
               error: data.error || null,
             })
 
             completed++
             setProgress(Math.round((completed / totalSearches) * 100))
+            
+            // Update results in real-time
+            setResults([...searchResults])
+            
           } catch (err) {
             searchResults.push({
               domain,
@@ -85,14 +104,17 @@ function App() {
               searchQuery: `site:${domain} "${article}"`,
               url: '',
               title: '',
+              description: '',
               error: err.message,
             })
 
             completed++
             setProgress(Math.round((completed / totalSearches) * 100))
+            setResults([...searchResults])
           }
 
-          await new Promise(resolve => setTimeout(resolve, 1000))
+          // Small delay between requests to avoid overloading
+          await new Promise(resolve => setTimeout(resolve, 500))
         }
       }
 
@@ -107,13 +129,14 @@ function App() {
   const downloadCSV = () => {
     if (results.length === 0) return
 
-    const headers = ['Dominio', 'Articolo', 'Query di Ricerca', 'Link Articolo', 'Titolo', 'Errore']
+    const headers = ['Dominio', 'Articolo', 'Query di Ricerca', 'Link Articolo', 'Titolo', 'Descrizione', 'Errore']
     const rows = results.map(r => [
       r.domain,
       r.article,
       r.searchQuery,
       r.url,
       r.title,
+      r.description || '',
       r.error || ''
     ])
 
@@ -131,16 +154,21 @@ function App() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    link.download = `ricerche_${new Date().toISOString().split('T')[0]}.csv`
+    link.download = `ricerche_qwant_${new Date().toISOString().split('T')[0]}.csv`
     link.click()
   }
+
+  const successCount = results.filter(r => r.url && !r.error).length
+  const errorCount = results.filter(r => r.error).length
+  const notFoundCount = results.filter(r => !r.url && !r.error).length
 
   return (
     <div className="app">
       <div className="container">
         <header className="header">
-          <h1>🔍 Search Engine Finder</h1>
-          <p className="subtitle">Cerca articoli su più domini con Qwant</p>
+          <h1>🔍 Boolean Search - Qwant Scraper</h1>
+          <p className="subtitle">Cerca articoli su più domini con scraping Puppeteer su Qwant</p>
+          <p className="info-text">⚡ Ogni ricerca richiede ~5-10 secondi (browser reale con Puppeteer)</p>
         </header>
 
         <div className="form-section">
@@ -153,11 +181,11 @@ function App() {
               id="domains"
               value={domains}
               onChange={(e) => setDomains(e.target.value)}
-              placeholder="youtube.com&#10;dailymotion.com&#10;quotidiano.net&#10;..."
+              placeholder="askanews.it&#10;quotidiano.net&#10;dailymotion.com&#10;..."
               rows={8}
               disabled={isSearching}
             />
-            <small>I domini verranno puliti automaticamente</small>
+            <small>I domini verranno puliti automaticamente. Consiglio: max 5-10 ricerche alla volta.</small>
           </div>
 
           <div className="input-group">
@@ -169,7 +197,7 @@ function App() {
               id="articles"
               value={articles}
               onChange={(e) => setArticles(e.target.value)}
-              placeholder="Titolo articolo 1&#10;Titolo articolo 2&#10;..."
+              placeholder="Fujifilm Healthcare Italia: innovazione e AI a servizio della salute&#10;Titolo articolo 2&#10;..."
               rows={8}
               disabled={isSearching}
             />
@@ -180,7 +208,7 @@ function App() {
             onClick={handleSearch}
             disabled={isSearching || !domains.trim() || !articles.trim()}
           >
-            {isSearching ? '⏳ Ricerca in corso...' : '🚀 Avvia Ricerca'}
+            {isSearching ? '⏳ Ricerca in corso...' : '🚀 Avvia Ricerca con Puppeteer'}
           </button>
         </div>
 
@@ -195,15 +223,30 @@ function App() {
             <div className="progress-bar-container">
               <div className="progress-bar" style={{ width: `${progress}%` }}></div>
             </div>
-            <p className="progress-text">{progress}% completato</p>
+            <p className="progress-text">
+              {progress}% completato 
+              {results.length > 0 && ` - ${results.length} ricerche completate`}
+            </p>
+            <p className="progress-info">
+              ⏱️ Tempo stimato: ~{Math.round((parseInput(domains).length * parseInput(articles).length - results.length) * 7 / 60)} minuti rimanenti
+            </p>
           </div>
         )}
 
-        {results.length > 0 && !isSearching && (
+        {results.length > 0 && (
           <div className="results-section">
             <div className="results-header">
-              <h2>Risultati ({results.length})</h2>
-              <button className="download-button" onClick={downloadCSV}>
+              <h2>
+                Risultati ({results.length})
+                {!isSearching && (
+                  <span className="results-stats">
+                    <span className="stat-success">✅ {successCount}</span>
+                    <span className="stat-error">❌ {errorCount}</span>
+                    <span className="stat-notfound">🔍 {notFoundCount}</span>
+                  </span>
+                )}
+              </h2>
+              <button className="download-button" onClick={downloadCSV} disabled={isSearching}>
                 📥 Scarica CSV
               </button>
             </div>
@@ -223,7 +266,7 @@ function App() {
                   {results.map((result, idx) => (
                     <tr key={idx} className={result.error ? 'error-row' : result.url ? 'success-row' : ''}>
                       <td>{result.domain}</td>
-                      <td>{result.article}</td>
+                      <td className="article-cell">{result.article}</td>
                       <td>
                         {result.url ? (
                           <a href={result.url} target="_blank" rel="noopener noreferrer">
@@ -233,9 +276,9 @@ function App() {
                           <span className="no-result">-</span>
                         )}
                       </td>
-                      <td>{result.title || '-'}</td>
+                      <td className="title-cell">{result.title || '-'}</td>
                       <td>
-                        {result.error && <span className="badge badge-error">❌ Errore</span>}
+                        {result.error && <span className="badge badge-error">❌ {result.error.substring(0, 30)}</span>}
                         {result.url && !result.error && <span className="badge badge-success">✅ Trovato</span>}
                         {!result.url && !result.error && <span className="badge">🔍 Non trovato</span>}
                       </td>

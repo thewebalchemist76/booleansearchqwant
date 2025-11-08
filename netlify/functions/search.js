@@ -1,100 +1,59 @@
-const fetch = require('node-fetch');
+const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer-core');
 
-function calculateSimilarity(str1, str2) {
-  const s1 = str1.toLowerCase().trim();
-  const s2 = str2.toLowerCase().trim();
+async function searchQwantWithPuppeteer(query, originalQuery) {
+  let browser = null;
   
-  if (s1 === s2) return 1.0;
-  if (s1.includes(s2) || s2.includes(s1)) return 0.8;
-  
-  const words1 = s1.split(/\s+/);
-  const words2 = s2.split(/\s+/);
-  let matches = 0;
-  
-  for (const word1 of words1) {
-    for (const word2 of words2) {
-      if (word1.length > 3 && word2.length > 3 && word1 === word2) {
-        matches++;
-      }
-    }
-  }
-  
-  return matches / Math.max(words1.length, words2.length);
-}
-
-async function searchQwant(query, originalQuery) {
   try {
-    const apiUrl = `https://api.qwant.com/v3/search/web?q=${encodeURIComponent(query)}&locale=it_IT&count=10&offset=0`;
-    
-    const response = await fetch(apiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json',
-        'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Referer': 'https://www.qwant.com/',
-        'Origin': 'https://www.qwant.com',
-      }
+    // Launch browser with chromium for Netlify
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
     
-    if (!response.ok) {
-      return {
-        url: '',
-        title: '',
-        error: `Errore Qwant API HTTP ${response.status}`
-      };
-    }
+    const page = await browser.newPage();
     
-    const data = await response.json();
+    // Set user agent
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
-    if (data.status !== 'success') {
-      return {
-        url: '',
-        title: '',
-        error: 'Errore nella risposta Qwant API'
-      };
-    }
+    // Build Qwant URL
+    const qwantUrl = `https://www.qwant.com/?q=${encodeURIComponent(query)}&t=web`;
     
-    if (!data.data || !data.data.result || !data.data.result.items || data.data.result.items.length === 0) {
-      return {
-        url: '',
-        title: '',
-        error: 'Nessun risultato trovato su Qwant'
-      };
-    }
+    // Navigate to Qwant
+    await page.goto(qwantUrl, {
+      waitUntil: 'networkidle0',
+      timeout: 30000
+    });
     
-    const results = [];
+    // Wait for results to load
+    await page.waitForSelector('.gW4ak span', { timeout: 10000 }).catch(() => null);
     
-    for (const item of data.data.result.items) {
-      if (item.type === 'web' || item.items) {
-        const webItems = item.items || [item];
-        
-        for (const webItem of webItems) {
-          if (webItem.url && webItem.title) {
-            const url = webItem.url;
-            const title = webItem.title;
-            const desc = webItem.desc || '';
-            
-            const titleSimilarity = calculateSimilarity(title, originalQuery);
-            const descSimilarity = calculateSimilarity(desc, originalQuery);
-            const similarity = Math.max(titleSimilarity, descSimilarity * 0.8);
-            
-            results.push({ 
-              url, 
-              title: title.replace(/<[^>]+>/g, ''),
-              similarity 
-            });
-          }
-        }
-      }
-    }
-    
-    if (results.length > 0) {
-      results.sort((a, b) => b.similarity - a.similarity);
-      const best = results[0];
+    // Extract data using the same selectors as Web Scraper sitemap
+    const result = await page.evaluate(() => {
+      // Title selector: .gW4ak span
+      const titleElement = document.querySelector('.gW4ak span');
+      const title = titleElement ? titleElement.textContent.trim() : '';
       
+      // Link selector: .Fqopp a
+      const linkElement = document.querySelector('.Fqopp a');
+      const url = linkElement ? linkElement.href : '';
+      
+      // Description selector: div.aVNer
+      const descElement = document.querySelector('div.aVNer');
+      const description = descElement ? descElement.textContent.trim() : '';
+      
+      return { title, url, description };
+    });
+    
+    await browser.close();
+    
+    if (result.url && result.title) {
       return {
-        url: best.url,
-        title: best.title,
+        url: result.url,
+        title: result.title,
+        description: result.description,
         error: null
       };
     }
@@ -102,19 +61,25 @@ async function searchQwant(query, originalQuery) {
     return {
       url: '',
       title: '',
-      error: 'Nessun risultato trovato'
+      description: '',
+      error: 'Nessun risultato trovato su Qwant'
     };
+    
   } catch (error) {
+    if (browser) {
+      await browser.close();
+    }
+    
     return {
       url: '',
       title: '',
-      error: `Errore Qwant: ${error.message}`
+      description: '',
+      error: `Errore Puppeteer: ${error.message}`
     };
   }
 }
 
 exports.handler = async (event) => {
-  // Handle CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -122,16 +87,10 @@ exports.handler = async (event) => {
     'Content-Type': 'application/json'
   };
 
-  // Handle OPTIONS preflight
   if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers,
-      body: ''
-    };
+    return { statusCode: 200, headers, body: '' };
   }
 
-  // Only allow POST
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
@@ -154,7 +113,8 @@ exports.handler = async (event) => {
     const cleanDomain = domain.replace(/\.\*$/, '').replace(/\*$/, '').replace(/\.$/, '').trim();
     const searchQuery = `site:${cleanDomain} "${query}"`;
     
-    const result = await searchQwant(searchQuery, query);
+    // Search with Puppeteer
+    const result = await searchQwantWithPuppeteer(searchQuery, query);
     
     return {
       statusCode: 200,

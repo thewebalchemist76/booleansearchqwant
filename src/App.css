@@ -52,6 +52,12 @@ body {
   color: #6b7280;
 }
 
+.info-text {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-top: 8px;
+}
+
 .form-section {
   background: white;
   border-radius: 12px;
@@ -172,6 +178,13 @@ body {
   font-weight: 500;
 }
 
+.progress-info {
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-top: 8px;
+}
+
 .results-section {
   background: white;
   border-radius: 12px;
@@ -193,6 +206,28 @@ body {
   color: #111827;
 }
 
+.results-stats {
+  font-size: 0.9rem;
+  font-weight: normal;
+  margin-left: 15px;
+}
+
+.results-stats span {
+  margin: 0 8px;
+}
+
+.stat-success {
+  color: #10b981;
+}
+
+.stat-error {
+  color: #ef4444;
+}
+
+.stat-notfound {
+  color: #6b7280;
+}
+
 .download-button {
   padding: 10px 20px;
   background: #10b981;
@@ -204,10 +239,15 @@ body {
   transition: all 0.2s;
 }
 
-.download-button:hover {
+.download-button:hover:not(:disabled) {
   background: #059669;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.download-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
 }
 
 .results-table-container {
@@ -261,6 +301,14 @@ body {
 
 .no-result {
   color: #9ca3af;
+}
+
+.article-cell,
+.title-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .badge {
