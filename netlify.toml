@@ -3,6 +3,9 @@
   functions = "netlify/functions"
   publish = "dist"
 
+[build.environment]
+  NODE_VERSION = "18"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
@@ -11,7 +14,3 @@
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["playwright-aws-lambda", "playwright-core"]
-  
-[[functions."search"]]
-  memory = 1024
-  timeout = 26
