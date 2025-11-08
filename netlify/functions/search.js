@@ -1,30 +1,27 @@
-const chromium = require('@sparticuz/chromium');
-const puppeteer = require('puppeteer-core');
+const playwright = require('playwright-aws-lambda');
 
-async function searchQwantWithPuppeteer(query, originalQuery) {
+async function searchQwantWithPlaywright(query, originalQuery) {
   let browser = null;
   
   try {
-    // Launch browser with chromium for Netlify
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+    // Launch browser with Playwright
+    browser = await playwright.launchChromium({
+      headless: true
     });
     
-    const page = await browser.newPage();
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    });
     
-    // Set user agent
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    const page = await context.newPage();
     
     // Build Qwant URL
     const qwantUrl = `https://www.qwant.com/?q=${encodeURIComponent(query)}&t=web`;
     
     // Navigate to Qwant
     await page.goto(qwantUrl, {
-      waitUntil: 'networkidle0',
-      timeout: 30000
+      waitUntil: 'networkidle',
+      timeout: 25000
     });
     
     // Wait for results to load
@@ -74,7 +71,7 @@ async function searchQwantWithPuppeteer(query, originalQuery) {
       url: '',
       title: '',
       description: '',
-      error: `Errore Puppeteer: ${error.message}`
+      error: `Errore Playwright: ${error.message}`
     };
   }
 }
@@ -113,8 +110,8 @@ exports.handler = async (event) => {
     const cleanDomain = domain.replace(/\.\*$/, '').replace(/\*$/, '').replace(/\.$/, '').trim();
     const searchQuery = `site:${cleanDomain} "${query}"`;
     
-    // Search with Puppeteer
-    const result = await searchQwantWithPuppeteer(searchQuery, query);
+    // Search with Playwright
+    const result = await searchQwantWithPlaywright(searchQuery, query);
     
     return {
       statusCode: 200,
